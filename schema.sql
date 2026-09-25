@@ -1,0 +1,27 @@
+create table profiles (id uuid primary key references auth.users on delete cascade, email text not null, role text not null default 'customer' check (role in ('customer','admin')));
+create table orders (id uuid primary key default gen_random_uuid(), user_id uuid not null references profiles(id), reference text not null, item text not null, total numeric(12,2) not null, status text not null default 'delivered', delivered_at timestamptz);
+create table refund_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id), order_id uuid not null references orders(id),
+  amount numeric(12,2) not null check (amount > 0), reason text not null,
+  status text not null default 'pending' check (status in ('pending','approved','rejected','needs_review')),
+  category text, ai_summary text, confidence numeric, injection_detected boolean default false,
+  violations text[] default '{}', draft_reply text, admin_note text, decided_by uuid references profiles(id),
+  idempotency_key uuid not null, created_at timestamptz default now(), unique (user_id, idempotency_key));
+create table audit_logs (id bigserial primary key, actor uuid, action text not null, entity_id uuid, detail jsonb, created_at timestamptz default now());
+-- Backend uses the service key; RLS with no policies blocks direct client access.
+alter table profiles enable row level security; alter table orders enable row level security;
+alter table refund_requests enable row level security; alter table audit_logs enable row level security;
+-- Audit log is append-only
+create rule audit_no_update as on update to audit_logs do instead nothing;
+create rule audit_no_delete as on delete to audit_logs do instead nothing;
+-- On signup: create profile + 3 demo orders
+create function handle_new_user() returns trigger language plpgsql security definer as $$
+begin
+  insert into profiles(id,email) values (new.id,new.email);
+  insert into orders(user_id,reference,item,total,delivered_at) values
+   (new.id,'WK-1001','Ergonomic desk chair',85000,now()-interval '5 days'),
+   (new.id,'WK-1002','Mechanical keyboard',32000,now()-interval '12 days'),
+   (new.id,'WK-1003','27" monitor',140000,now()-interval '48 days');
+  return new; end $$;
+create trigger on_signup after insert on auth.users for each row execute function handle_new_user();
