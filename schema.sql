@@ -7,7 +7,7 @@ create table refund_requests (
   status text not null default 'pending' check (status in ('pending','approved','rejected','needs_review')),
   category text, ai_summary text, confidence numeric, injection_detected boolean default false,
   violations text[] default '{}', draft_reply text, admin_note text, decided_by uuid references profiles(id),
-  idempotency_key uuid not null, created_at timestamptz default now(), unique (user_id, idempotency_key));
+  idempotency_key uuid not null, image_url text, created_at timestamptz default now(), unique (user_id, idempotency_key));
 create table audit_logs (id bigserial primary key, actor uuid, action text not null, entity_id uuid, detail jsonb, created_at timestamptz default now());
 -- Backend uses the service key; RLS with no policies blocks direct client access.
 alter table profiles enable row level security; alter table orders enable row level security;
@@ -25,3 +25,20 @@ begin
    (new.id,'WK-1003','27" monitor',140000,now()-interval '48 days');
   return new; end $$;
 create trigger on_signup after insert on auth.users for each row execute function handle_new_user();
+
+-- Storage bucket for refund evidence photos
+insert into storage.buckets (id, name, public) values ('refund-evidence', 'refund-evidence', true)
+on conflict (id) do nothing;
+drop policy if exists "Authenticated users can upload evidence" on storage.objects;
+create policy "Authenticated users can upload evidence" on storage.objects
+for insert to authenticated with check (bucket_id = 'refund-evidence');
+drop policy if exists "Public can view evidence" on storage.objects;
+create policy "Public can view evidence" on storage.objects
+for select to public using (bucket_id = 'refund-evidence');
+
+-- Realtime for the admin dashboard's live refund queue
+alter publication supabase_realtime add table refund_requests;
+drop policy if exists "Admins can read refund_requests for realtime" on refund_requests;
+create policy "Admins can read refund_requests for realtime" on refund_requests
+for select to authenticated
+using (exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin'));
