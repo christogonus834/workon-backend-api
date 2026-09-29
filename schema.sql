@@ -42,3 +42,15 @@ drop policy if exists "Admins can read refund_requests for realtime" on refund_r
 create policy "Admins can read refund_requests for realtime" on refund_requests
 for select to authenticated
 using (exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin'));
+
+-- Admin-editable store settings (single row) that drive both the policy engine and the AI's system prompt
+create table if not exists settings (
+  id int primary key default 1,
+  window_days int not null default 30,
+  auto_approve_max numeric(12,2) not null default 50000,
+  min_confidence numeric(3,2) not null default 0.75,
+  policy_text text not null default 'Refunds are available within 30 days of delivery for items that arrive damaged, defective, or not as described. Change-of-mind returns are reviewed case by case. Requests over the auto-approval limit are always reviewed by a support agent.',
+  constraint settings_singleton check (id = 1)
+);
+insert into settings (id) values (1) on conflict (id) do nothing;
+alter table settings enable row level security;
