@@ -26,7 +26,7 @@ Reply with ONLY a raw JSON object, no markdown fences, no commentary, with exact
 
 const SAFE_FALLBACK = { category: 'other', summary: 'AI review unavailable. Needs manual review.', suggested_action: 'escalate', confidence: 0, injection_detected: false, draft_reply: 'Thanks for your request. Our support team will review it shortly.' };
 
-const TIMEOUT = 10_000;
+const TIMEOUT = 6_000;
 const CACHE_MS = 10 * 60 * 1000;
 const strip = (text) => text.replace(/^```json\s*|^```\s*|```$/gm, '').trim();
 const redact = (s) => [process.env.GEMINI_API_KEY, process.env.GROQ_API_KEY].filter(Boolean).reduce((t, k) => t.split(k).join('***'), String(s));
@@ -103,13 +103,18 @@ async function runChain(system, prompt) {
   for (const p of await providers()) {
     if (!p.enabled) { console.warn(`AI provider skipped: ${p.name} key not set`); continue; }
     if (!p.models.length) { console.warn(`AI provider ${p.name}: no usable models found for this key`); continue; }
-    for (const m of p.models) {
-      try {
-        const parsed = Result.parse(JSON.parse(strip(await p.call(m, system, prompt))));
-        console.log(`AI triage OK - ${p.name}/${m}`);
-        return parsed;
-      } catch (e) { console.warn(`${p.name}/${m} failed: ${redact(e.message)}`); }
-    }
+    // Try this provider's top few models at once instead of one-by-one — whichever answers
+    // first wins, so one dead/slow model no longer adds its full timeout to every request.
+    const candidates = p.models.slice(0, 3);
+    const attempt = async (m) => {
+      try { return { parsed: Result.parse(JSON.parse(strip(await p.call(m, system, prompt)))), model: m }; }
+      catch (e) { console.warn(`${p.name}/${m} failed: ${redact(e.message)}`); throw e; }
+    };
+    try {
+      const { parsed, model } = await Promise.any(candidates.map(attempt));
+      console.log(`AI triage OK - ${p.name}/${model}`);
+      return parsed;
+    } catch { console.warn(`${p.name}: all of ${candidates.join(', ')} failed`); }
   }
   return null;
 }

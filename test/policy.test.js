@@ -20,6 +20,12 @@ test('flags amount above what is still refundable', () => {
   const prior = [{ amount: 80000, status: 'approved' }];
   assert.deepEqual(evaluate(order(), 30000, prior, S, now).violations, ['EXCEEDS_REMAINING_BALANCE']);
 });
+test('flags a final sale item regardless of anything else', () => {
+  assert.ok(evaluate(order({ is_final_sale: true }), 1000, [], S, now).violations.includes('FINAL_SALE_ITEM'));
+});
+test('rejection reply names final sale explicitly', () => {
+  assert.match(rejectionReply(['FINAL_SALE_ITEM'], S), /final sale item/);
+});
 test('rejected earlier requests do not use up the balance', () => {
   const prior = [{ amount: 80000, status: 'rejected' }];
   assert.deepEqual(evaluate(order(), 30000, prior, S, now).violations, []);

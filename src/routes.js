@@ -111,6 +111,7 @@ const OrderBody = z.object({
   total: z.number().positive().max(10_000_000),
   status: z.enum(['delivered', 'processing', 'cancelled']).default('delivered'),
   deliveredAt: z.string().datetime().optional(),
+  isFinalSale: z.boolean().default(false),
 }).strict();
 
 admin.get('/customers', wrap(async (_req, res) => {
@@ -126,8 +127,8 @@ admin.get('/orders', wrap(async (_req, res) => {
 admin.post('/orders', wrap(async (req, res) => {
   const p = OrderBody.safeParse(req.body);
   if (!p.success) throw fail(400, p.error.issues[0].message);
-  const { userId, reference, item, total, status, deliveredAt } = p.data;
-  const { data, error } = await db.from('orders').insert({ user_id: userId, reference, item, total, status, delivered_at: deliveredAt || new Date().toISOString() }).select().single();
+  const { userId, reference, item, total, status, deliveredAt, isFinalSale } = p.data;
+  const { data, error } = await db.from('orders').insert({ user_id: userId, reference, item, total, status, is_final_sale: isFinalSale, delivered_at: deliveredAt || new Date().toISOString() }).select().single();
   if (error) throw error;
   await audit(req.user.id, 'order.created', data.id, { reference, item, total });
   res.status(201).json(data);
@@ -143,6 +144,7 @@ admin.put('/orders/:id', wrap(async (req, res) => {
   if (p.data.total !== undefined) patch.total = p.data.total;
   if (p.data.status !== undefined) patch.status = p.data.status;
   if (p.data.deliveredAt !== undefined) patch.delivered_at = p.data.deliveredAt;
+  if (p.data.isFinalSale !== undefined) patch.is_final_sale = p.data.isFinalSale;
   const { data, error } = await db.from('orders').update(patch).eq('id', req.params.id).select().maybeSingle();
   if (error) throw error;
   if (!data) throw fail(404, 'Order not found');

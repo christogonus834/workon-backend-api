@@ -6,6 +6,7 @@ export function evaluate(order, amount, priorRefunds, s, now = new Date()) {
   const violations = [];
   const ageDays = (now - new Date(order.delivered_at)) / 864e5;
   const committed = priorRefunds.filter(r => ACTIVE.includes(r.status)).reduce((sum, r) => sum + Number(r.amount), 0);
+  if (order.is_final_sale) violations.push('FINAL_SALE_ITEM');
   if (order.status !== 'delivered') violations.push('ORDER_NOT_DELIVERED');
   if (!(ageDays <= s.window_days)) violations.push('OUTSIDE_REFUND_WINDOW');
   if (amount > Number(order.total) - committed) violations.push('EXCEEDS_REMAINING_BALANCE');
@@ -23,6 +24,7 @@ export function decide({ violations }, ai, amount, s) {
 // Customer-facing text for policy rejections comes from code, never from the AI,
 // so a rejected request can never be described as "under review".
 const MESSAGES = {
+  FINAL_SALE_ITEM: () => 'this item was marked as a final sale item and is not eligible for refund',
   ORDER_NOT_DELIVERED: () => 'this order has not been delivered yet',
   OUTSIDE_REFUND_WINDOW: (s) => `it is outside our ${s.window_days}-day refund window`,
   EXCEEDS_REMAINING_BALANCE: () => 'the amount is more than what is still refundable on this order',

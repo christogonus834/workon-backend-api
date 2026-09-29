@@ -1,5 +1,5 @@
 create table profiles (id uuid primary key references auth.users on delete cascade, email text not null, role text not null default 'customer' check (role in ('customer','admin')));
-create table orders (id uuid primary key default gen_random_uuid(), user_id uuid not null references profiles(id), reference text not null, item text not null, total numeric(12,2) not null, status text not null default 'delivered', delivered_at timestamptz);
+create table orders (id uuid primary key default gen_random_uuid(), user_id uuid not null references profiles(id), reference text not null, item text not null, total numeric(12,2) not null, status text not null default 'delivered', is_final_sale boolean not null default false, delivered_at timestamptz);
 create table refund_requests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id), order_id uuid not null references orders(id),
