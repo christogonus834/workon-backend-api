@@ -29,7 +29,7 @@ r.get('/orders', wrap(async (req, res) => {
 }));
 
 r.get('/refunds', wrap(async (req, res) => {
-  const { data } = await db.from('refund_requests').select('id,amount,status,draft_reply,image_url,created_at,order:orders(reference,item)').eq('user_id', req.user.id).order('created_at', { ascending: false });
+  const { data } = await db.from('refund_requests').select('id,amount,status,draft_reply,admin_note,image_url,created_at,order:orders(reference,item)').eq('user_id', req.user.id).order('created_at', { ascending: false });
   res.json(data.map(x => ({ ...x, draft_reply: x.status === 'needs_review' ? null : x.draft_reply })));
 }));
 
